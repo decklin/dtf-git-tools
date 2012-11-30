@@ -6,7 +6,7 @@ Some random git tools for a workflow I will write up someday.
 License
 =======
 
-Copyright 2010-2012 Sonian, Inc.
+Copyright 2010-2012 Sonian, Inc.  
 Copyright 2012 Decklin Foster <decklin@red-bean.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a
