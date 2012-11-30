@@ -1,0 +1,21 @@
+#!/bin/sh
+
+port="$1"
+base="${2:-master}"
+target="$(git symbolic-ref -q HEAD 2>/dev/null | sed 's,refs/heads/,,')"
+head="$(git log -1 --format=%h "$port")"
+temp="${port#origin/}-backport"
+git_dir="$(git rev-parse --show-toplevel)/.git"
+
+git checkout -b "$temp" "$port"
+git rebase --interactive --onto "$target" "$base" "$temp"
+
+if [ -e "$git_dir/rebase-apply" -o -e "$git_dir/rebase-merge" ]; then
+    echo "==== $0: starting shell to finish rebase; EXIT WHEN COMPLETE ===="
+    ${SHELL:-/bin/sh}
+fi
+
+git checkout "$target"
+git merge --squash "$temp"
+git commit -m "[BACKPORT] Squash $port (up to $head) onto $target"
+git branch -D "$temp"

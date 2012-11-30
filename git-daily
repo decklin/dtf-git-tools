@@ -1,0 +1,72 @@
+#!/bin/sh
+
+start="master"
+today="$(date +%F)"
+
+while getopts qs:t:y: opt; do
+    case $opt in
+        q) quiet="yes";;
+        s) start="$OPTARG";;
+        t) today="$OPTARG";;
+        y) yesterday="$OPTARG";;
+    esac
+done
+shift $(($OPTIND - 1))
+
+if test -z "$yesterday"; then
+    echo "usage: git-daily -y YESTERDAY [-t TODAY] BRANCH [BRANCH...]" 1>&2
+    exit 2
+fi
+
+todo="$(mktemp -t git-daily-todo.XXXXX)"
+
+gen_todo() {
+    printf "# Branches from $1\n\n"
+    git unmerged -sba -i "$1" HEAD | while read branch; do echo "merge $branch ($(git rev-list ..$branch | wc -l) commits)"; done
+    printf "\n# Other commits from $1\n\n"
+    git unmerged -sc -i "$1" HEAD | while read commit; do git log -1 --pretty='format:pick %h %s%n' "$commit"; done
+}
+
+big_echo() {
+    echo "=============================================================================="
+    echo "    **** "$(basename "$0")": $*"
+    echo "=============================================================================="
+}
+
+dirty_workdir() {
+    git status --porcelain | egrep -q '^([UADM][UADM])'
+}
+
+clean_commit() {
+    # Try the simple case
+    dirty_workdir || git commit "$@"
+    # If that failed, or we were already dirty, clean up
+    while dirty_workdir; do
+        big_echo "starting shell to resolve conflicts; EXIT WHEN DONE"
+        "${SHELL:-/bin/sh}"
+        dirty_workdir || git commit -e "$@"
+    done
+}
+
+for branch; do
+
+    git checkout -b "$branch/$today" "$start"
+    gen_todo "$branch/$yesterday" > "$todo"
+    "${EDITOR:-vi}" "$todo"
+
+    for b in $(awk '$1=="merge" {print $2}' "$todo"); do
+        big_echo "merging $b..."
+        git merge --no-commit --no-ff "$b"
+        clean_commit -m "Merge branch '$b' into daily '$branch/$today'"
+    done
+
+    for c in $(awk '$1=="pick" {print $2}' "$todo"); do
+        git cherry-pick --no-commit "$c"
+        clean_commit -C "$c"
+    done
+
+    test "$quiet" || git diff "$branch/$yesterday" "$branch/$today"
+
+done
+
+rm "$todo"
